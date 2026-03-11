@@ -1,0 +1,26 @@
+# API密钥配置 (不要提交到git!)
+# 复制此文件为 api_keys.yaml 并填入真实密钥
+
+anthropic:
+  api_key: "YOUR_ANTHROPIC_API_KEY_HERE"
+  model: "claude-3-5-sonnet-20241022"
+  max_tokens: 1024
+  temperature: 0.7
+
+# B站直播相关配置
+bilibili:
+  room_id: 12345678  # 你的直播间ID
+  sessdata: ""       # B站登录cookie (可选，用于获取真实弹幕)
+  bili_jct: ""       # CSRF token (可选)
+
+# TTS配置
+tts:
+  engine: "edge"  # "edge" 或 "gpt_sovits"
+  edge_voice: "zh-CN-XiaoxiaoNeural"  # Edge TTS语音
+  gpt_sovits_url: "http://localhost:9880"  # 本地GPT-SoVITS服务地址
+
+# VTube Studio配置
+vtube_studio:
+  enabled: true
+  ip: "127.0.0.1"
+  port: 8001
