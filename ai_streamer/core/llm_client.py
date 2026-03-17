@@ -1,11 +1,10 @@
 """
-Claude API客户端 - LLM调用和事实提取
+LLM API客户端 - 支持Claude和Kimi
 """
 import os
 import yaml
 from typing import List, Dict, Optional
 from dataclasses import dataclass
-from anthropic import Anthropic
 from loguru import logger
 
 
@@ -18,25 +17,59 @@ class ChatResponse:
 
 
 class LLMClient:
-    """Claude API封装"""
+    """LLM客户端 - 支持多模型"""
     
     def __init__(self, config_path: str = "config/api_keys.yaml"):
         # 加载配置
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
+        # 优先使用Kimi，如果没有则使用Claude
+        kimi_config = config.get("kimi", {})
         anthropic_config = config.get("anthropic", {})
-        api_key = anthropic_config.get("api_key", os.getenv("ANTHROPIC_API_KEY"))
         
-        if not api_key or api_key == "YOUR_ANTHROPIC_API_KEY_HERE":
-            raise ValueError("请配置Anthropic API密钥!")
+        # 检测使用哪个模型
+        kimi_key = kimi_config.get("api_key", os.getenv("KIMI_API_KEY"))
+        claude_key = anthropic_config.get("api_key", os.getenv("ANTHROPIC_API_KEY"))
         
-        self.client = Anthropic(api_key=api_key)
-        self.model = anthropic_config.get("model", "claude-3-5-sonnet-20241022")
-        self.max_tokens = anthropic_config.get("max_tokens", 1024)
-        self.temperature = anthropic_config.get("temperature", 0.7)
+        if kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
+            self.provider = "kimi"
+            self.api_key = kimi_key
+            self.model = kimi_config.get("model", "kimi-k2-5")
+            self.base_url = kimi_config.get("base_url", "https://api.moonshot.cn/v1")
+            self._init_kimi()
+            logger.info(f"✓ LLM客户端: Kimi ({self.model})")
+            
+        elif claude_key and claude_key != "YOUR_ANTHROPIC_API_KEY_HERE":
+            self.provider = "claude"
+            self.api_key = claude_key
+            self.model = anthropic_config.get("model", "claude-3-5-sonnet-20241022")
+            self._init_claude()
+            logger.info(f"✓ LLM客户端: Claude ({self.model})")
+        else:
+            raise ValueError("请配置API密钥! 支持Kimi或Claude，在config/api_keys.yaml中设置")
         
-        logger.info(f"LLM客户端初始化完成: {self.model}")
+        self.max_tokens = config.get("max_tokens", 1024)
+        self.temperature = config.get("temperature", 0.7)
+    
+    def _init_kimi(self):
+        """初始化Kimi客户端 (OpenAI兼容格式)"""
+        try:
+            from openai import OpenAI
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url
+            )
+        except ImportError:
+            raise ImportError("请安装openai: pip install openai")
+    
+    def _init_claude(self):
+        """初始化Claude客户端"""
+        try:
+            from anthropic import Anthropic
+            self.client = Anthropic(api_key=self.api_key)
+        except ImportError:
+            raise ImportError("请安装anthropic: pip install anthropic")
     
     def _build_system_prompt(self) -> str:
         """构建系统提示词"""
@@ -70,51 +103,23 @@ class LLMClient:
 """
     
     def chat(self, message: str, user_context: str = "", chat_history: List[Dict] = None) -> ChatResponse:
-        """
-        与Claude对话
-        
-        Args:
-            message: 用户消息
-            user_context: 用户记忆上下文
-            chat_history: 聊天历史
-        
-        Returns:
-            ChatResponse对象
-        """
+        """与LLM对话"""
         if chat_history is None:
             chat_history = []
         
-        # 构建消息
-        messages = []
-        
-        # 添加历史
-        for msg in chat_history[-10:]:  # 最近10条
-            messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", "")
-            })
-        
         # 构建当前消息(添加上下文)
         full_message = f"{user_context}\n\n观众弹幕: {message}" if user_context else message
-        messages.append({"role": "user", "content": full_message})
         
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=self._build_system_prompt(),
-                messages=messages
-            )
-            
-            response_text = response.content[0].text
+            if self.provider == "kimi":
+                response = self._chat_kimi(full_message, chat_history)
+            else:
+                response = self._chat_claude(full_message, chat_history)
             
             # 解析动作和事实
-            actions = self._extract_actions(response_text)
-            facts = self._extract_facts(response_text)
-            
-            # 清理响应文本(移除动作和事实标记)
-            clean_text = self._clean_response(response_text)
+            actions = self._extract_actions(response)
+            facts = self._extract_facts(response)
+            clean_text = self._clean_response(response)
             
             return ChatResponse(
                 text=clean_text,
@@ -130,12 +135,55 @@ class LLMClient:
                 facts=[]
             )
     
+    def _chat_kimi(self, message: str, chat_history: List[Dict]) -> str:
+        """调用Kimi API"""
+        messages = [{"role": "system", "content": self._build_system_prompt()}]
+        
+        # 添加历史
+        for msg in chat_history[-10:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        messages.append({"role": "user", "content": message})
+        
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature
+        )
+        
+        return completion.choices[0].message.content
+    
+    def _chat_claude(self, message: str, chat_history: List[Dict]) -> str:
+        """调用Claude API"""
+        messages = []
+        
+        for msg in chat_history[-10:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        messages.append({"role": "user", "content": message})
+        
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            system=self._build_system_prompt(),
+            messages=messages
+        )
+        
+        return response.content[0].text
+    
     def _extract_actions(self, text: str) -> List[Dict]:
         """从响应中提取动作指令"""
         import re
         actions = []
         
-        # 匹配 [ACTION: {...}]
         pattern = r'\[ACTION:\s*(\{.*?\})\]'
         matches = re.findall(pattern, text, re.DOTALL)
         
@@ -154,7 +202,6 @@ class LLMClient:
         import re
         facts = []
         
-        # 匹配 [FACT: ...]
         pattern = r'\[FACT:\s*(.+?)\]'
         matches = re.findall(pattern, text)
         
@@ -167,15 +214,13 @@ class LLMClient:
         """清理响应文本，移除标记"""
         import re
         
-        # 移除动作标记
         text = re.sub(r'\[ACTION:\s*\{.*?\}\]', '', text, flags=re.DOTALL)
-        # 移除事实标记
         text = re.sub(r'\[FACT:\s*.+?\]', '', text)
         
         return text.strip()
     
     def generate_observation_summary(self, screenshot_desc: str, game_state: str) -> str:
-        """生成游戏观察总结(用于挂机时的自我解说)"""
+        """生成游戏观察总结"""
         prompt = f"""作为主播，简单描述一下当前游戏画面:
 
 游戏状态: {game_state}
@@ -184,13 +229,22 @@ class LLMClient:
 用1-2句话描述你在做什么，语气自然。"""
         
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=200,
-                temperature=0.7,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.content[0].text.strip()
+            if self.provider == "kimi":
+                completion = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200,
+                    temperature=0.7
+                )
+                return completion.choices[0].message.content.strip()
+            else:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=200,
+                    temperature=0.7,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.content[0].text.strip()
         except Exception as e:
             logger.error(f"生成观察总结失败: {e}")
             return "让我看看..."
