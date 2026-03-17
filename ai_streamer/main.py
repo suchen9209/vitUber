@@ -34,6 +34,9 @@ from tasks.chat_handler import ChatHandler
 from tasks.game_automation import GameAutomation
 from tasks.command_parser import CommandParser
 
+# 🆕 新增：陪伴模式
+from core.companion_mode import create_companion_mode, CompanionMode
+
 
 # 配置日志
 logger.remove()
@@ -67,6 +70,7 @@ class AIStreamer:
         self.chat_handler: ChatHandler = None
         self.game_auto: GameAutomation = None
         self.command_parser: CommandParser = None
+        self.companion: CompanionMode = None  # 🆕 陪伴模式
         
         self.running = False
     
@@ -129,7 +133,16 @@ class AIStreamer:
         self.command_parser = CommandParser()
         logger.info("✓ 任务处理器")
         
-        # 10. 进入游戏(如果指定了)
+        # 🆕 10. 陪伴模式（赛博陪伴）
+        self.companion = create_companion_mode(
+            tts_callback=self.tts.speak,
+            danmaku_callback=None  # 暂不发送弹幕
+        )
+        # 在后台启动陪伴模式
+        asyncio.create_task(self.companion.start())
+        logger.info("✓ 陪伴模式（无人时自动说话）")
+        
+        # 11. 进入游戏(如果指定了)
         if self.game_key:
             await self.session.enter_game_mode(self.game_key)
             await self.session.enter_auto_mode()
@@ -144,6 +157,10 @@ class AIStreamer:
     async def _on_danmaku(self, user_id: str, username: str, message: str):
         """弹幕回调"""
         try:
+            # 🆕 通知陪伴模式：有用户交互了
+            if self.companion:
+                self.companion.on_user_interaction()
+            
             # 1. 先尝试解析简单指令
             parsed_action = self.command_parser.parse(message)
             
@@ -201,6 +218,11 @@ class AIStreamer:
         """关闭清理"""
         logger.info("正在关闭...")
         self.running = False
+        
+        # 🆕 停止陪伴模式
+        if self.companion:
+            self.companion.stop()
+            logger.info("✓ 陪伴模式已停止")
         
         if self.game_auto:
             await self.game_auto.stop()
