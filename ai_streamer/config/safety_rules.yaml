@@ -1,0 +1,51 @@
+# 指令安全规则配置
+# 定义哪些动作是允许自动执行的，哪些需要确认
+
+safety_rules:
+  # 危险等级定义
+  danger_levels:
+    safe: 0      # 安全: 只读操作，无风险
+    low: 1       # 低风险: 常规游戏操作
+    medium: 2    # 中风险: 可能消耗游戏资源
+    high: 3      # 高风险: 可能导致重要损失
+    critical: 4  # 极高风险: 需要人工确认
+
+  # 允许自动执行的动作白名单
+  # 这些动作不需要额外确认
+  auto_allow_actions:
+    - "click_menu"
+    - "open_inventory"
+    - "close_inventory"
+    - "sort_items"
+    - "check_status"
+    - "move_to"
+    - "click_at_safe_zone"
+    - "scroll"
+    - "screenshot"
+
+  # 需要确认的动作
+  confirm_required_actions:
+    - "use_consumable"
+    - "sell_item"
+    - "discard_item"
+    - "equip_item"
+    - "unequip_item"
+    - "craft_item"
+    - "upgrade_item"
+
+  # 禁止自动执行的危险动作
+  forbidden_actions:
+    - "delete_character"
+    - "reset_progress"
+    - "spend_premium_currency"
+    - "confirm_purchase"
+    - "join_guild"
+    - "send_trade"
+    - "accept_trade"
+
+  # 全局限制
+  limits:
+    max_actions_per_minute: 30
+    max_spend_per_session: 0  # 0表示禁止任何消费
+    require_confirmation_for_cost: true
+    auto_logout_after_idle_minutes: 60

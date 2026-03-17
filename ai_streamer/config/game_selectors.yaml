@@ -1,0 +1,45 @@
+# 游戏DOM选择器配置
+# 为不同游戏定义元素选择器
+
+games:
+  # 示例: 通用网页游戏模板
+  generic_web_game:
+    name: "通用网页游戏"
+    url: "https://example-game.com"
+    selectors:
+      # 游戏画布
+      canvas: "canvas#gameCanvas"
+      
+      # 常见按钮
+      start_button: "button#start"
+      pause_button: "button#pause"
+      settings_button: "button#settings"
+      
+      # 菜单
+      menu_button: "button.menu-toggle"
+      inventory_button: "button.inventory"
+      
+      # 背包系统示例
+      inventory:
+        open: "button.inventory-btn"
+        close: "button.inventory-close"
+        items: ".inventory-item"
+        sort_button: "button.sort-items"
+        
+    # 游戏特定动作
+    actions:
+      click_at:
+        description: "在指定坐标点击"
+        selector: "canvas#gameCanvas"
+        type: "click_coordinate"
+        
+      drag_item:
+        description: "拖拽物品"
+        selector: ".inventory-item"
+        type: "drag_and_drop"
+
+  # 你可以添加更多游戏配置
+  # another_game:
+  #   name: "某某游戏"
+  #   url: "..."
+  #   selectors: ...
