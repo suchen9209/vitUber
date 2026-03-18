@@ -1,5 +1,5 @@
 """
-LLM API客户端 - 支持Claude和Kimi
+LLM API客户端 - 支持Claude、Kimi Code和Moonshot Kimi
 """
 import os
 import yaml
@@ -24,21 +24,31 @@ class LLMClient:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
-        # 优先使用Kimi，如果没有则使用Claude
+        # 优先级: Kimi Code > Moonshot Kimi > Claude
+        kimi_code_config = config.get("kimi_code", {})
         kimi_config = config.get("kimi", {})
         anthropic_config = config.get("anthropic", {})
         
         # 检测使用哪个模型
+        kimi_code_key = kimi_code_config.get("api_key", os.getenv("KIMI_CODE_API_KEY"))
         kimi_key = kimi_config.get("api_key", os.getenv("KIMI_API_KEY"))
         claude_key = anthropic_config.get("api_key", os.getenv("ANTHROPIC_API_KEY"))
         
-        if kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
+        if kimi_code_key and kimi_code_key != "YOUR_KIMI_CODE_API_KEY_HERE":
+            self.provider = "kimi_code"
+            self.api_key = kimi_code_key
+            self.model = kimi_code_config.get("model", "k2p5")
+            self.base_url = kimi_code_config.get("base_url", "https://api.kimi.com/coding")
+            self._init_kimi_code()
+            logger.info(f"✓ LLM客户端: Kimi Code ({self.model})")
+            
+        elif kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
             self.provider = "kimi"
             self.api_key = kimi_key
             self.model = kimi_config.get("model", "kimi-k2-5")
             self.base_url = kimi_config.get("base_url", "https://api.moonshot.cn/v1")
             self._init_kimi()
-            logger.info(f"✓ LLM客户端: Kimi ({self.model})")
+            logger.info(f"✓ LLM客户端: Moonshot Kimi ({self.model})")
             
         elif claude_key and claude_key != "YOUR_ANTHROPIC_API_KEY_HERE":
             self.provider = "claude"
@@ -47,13 +57,28 @@ class LLMClient:
             self._init_claude()
             logger.info(f"✓ LLM客户端: Claude ({self.model})")
         else:
-            raise ValueError("请配置API密钥! 支持Kimi或Claude，在config/api_keys.yaml中设置")
+            raise ValueError("请配置API密钥! 支持Kimi Code、Moonshot Kimi或Claude，在config/api_keys.yaml中设置")
         
         self.max_tokens = config.get("max_tokens", 1024)
         self.temperature = config.get("temperature", 0.7)
     
+    def _init_kimi_code(self):
+        """初始化Kimi Code客户端 (Anthropic兼容格式)"""
+        try:
+            import anthropic
+            # Kimi Code API 使用 Anthropic 格式
+            self.client = anthropic.Anthropic(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_headers={
+                    "User-Agent": "vitUber/1.0"
+                }
+            )
+        except ImportError:
+            raise ImportError("请安装anthropic: pip install anthropic")
+    
     def _init_kimi(self):
-        """初始化Kimi客户端 (OpenAI兼容格式)"""
+        """初始化Moonshot Kimi客户端 (OpenAI兼容格式)"""
         try:
             from openai import OpenAI
             self.client = OpenAI(
@@ -114,7 +139,8 @@ class LLMClient:
             if self.provider == "kimi":
                 response = self._chat_kimi(full_message, chat_history)
             else:
-                response = self._chat_claude(full_message, chat_history)
+                # Kimi Code 和 Claude 都使用 Anthropic 格式
+                response = self._chat_anthropic(full_message, chat_history)
             
             # 解析动作和事实
             actions = self._extract_actions(response)
@@ -136,7 +162,7 @@ class LLMClient:
             )
     
     def _chat_kimi(self, message: str, chat_history: List[Dict]) -> str:
-        """调用Kimi API"""
+        """调用Moonshot Kimi API (OpenAI格式)"""
         messages = [{"role": "system", "content": self._build_system_prompt()}]
         
         # 添加历史
@@ -157,8 +183,8 @@ class LLMClient:
         
         return completion.choices[0].message.content
     
-    def _chat_claude(self, message: str, chat_history: List[Dict]) -> str:
-        """调用Claude API"""
+    def _chat_anthropic(self, message: str, chat_history: List[Dict]) -> str:
+        """调用Anthropic格式API (Kimi Code / Claude)"""
         messages = []
         
         for msg in chat_history[-10:]:
@@ -238,6 +264,7 @@ class LLMClient:
                 )
                 return completion.choices[0].message.content.strip()
             else:
+                # Kimi Code 和 Claude 使用相同格式
                 response = self.client.messages.create(
                     model=self.model,
                     max_tokens=200,

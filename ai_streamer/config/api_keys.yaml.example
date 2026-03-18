@@ -1,7 +1,13 @@
 # API密钥配置 (不要提交到git!)
 # 复制此文件为 api_keys.yaml 并填入真实密钥
 
-# ==================== Kimi配置（推荐）====================
+# ==================== Kimi Code配置（推荐）====================
+kimi_code:
+  api_key: "YOUR_KIMI_CODE_API_KEY_HERE"  # Kimi Code API Key (https://kimi.com)
+  model: "k2p5"                           # 模型: k2p5
+  base_url: "https://api.kimi.com/coding" # API地址
+
+# ==================== Moonshot Kimi配置（备选）====================
 kimi:
   api_key: "YOUR_KIMI_API_KEY_HERE"  # Moonshot API Key
   model: "kimi-k2-5"                 # 模型选择
