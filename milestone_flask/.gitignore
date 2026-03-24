@@ -1,0 +1,15 @@
+# 数据文件（自动生成）
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 测试文件
+test_api.py
+
+# 日志
+*.log
